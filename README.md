@@ -16,14 +16,14 @@ Manage multiple Claude Code configurations — different accounts, skills, MCP s
 ## Install
 
 ```sh
-git clone https://github.com/geovaneguibes/claude-profile-switch.git ~/.local/share/cps-bin
+git clone https://github.com/guibes/claude-profile-switch.git ~/.local/share/cps-bin
 ln -sf ~/.local/share/cps-bin/bin/cps ~/.local/bin/cps
 ```
 
 Or with the installer:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/geovaneguibes/claude-profile-switch/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/guibes/claude-profile-switch/main/install.sh | bash
 ```
 
 ## Quick Start

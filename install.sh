@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="https://github.com/geovaneguibes/claude-profile-switch.git"
+REPO="https://github.com/guibes/claude-profile-switch.git"
 INSTALL_DIR="${CPS_INSTALL_DIR:-$HOME/.local/share/cps-bin}"
 
 RED='\033[0;31m'
