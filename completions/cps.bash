@@ -2,7 +2,7 @@ _cps_completions() {
   local cur prev commands
   cur="${COMP_WORDS[COMP_CWORD]}"
   prev="${COMP_WORDS[COMP_CWORD-1]}"
-  commands="init create use list current delete rename export import clone save log rollback remote push pull sync diff edit doctor shell-init help version"
+  commands="init create use list current delete rename export import clone status snapshot desktop save log rollback remote push pull sync diff edit doctor shell-init help version"
 
   case "$prev" in
     use|delete|rm|edit|log|diff|export|rename)
@@ -33,6 +33,14 @@ _cps_completions() {
       ;;
     sync)
       COMPREPLY=($(compgen -W "enable disable status" -- "$cur"))
+      return
+      ;;
+    desktop)
+      COMPREPLY=($(compgen -W "save restore status" -- "$cur"))
+      return
+      ;;
+    snapshot)
+      COMPREPLY=($(compgen -W "--desktop" -- "$cur"))
       return
       ;;
   esac

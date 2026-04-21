@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CPS_VERSION="0.2.1"
+CPS_VERSION="0.3.0"
 
 CPS_ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 
@@ -20,7 +20,7 @@ ${BOLD}USAGE${RESET}
 
 ${BOLD}PROFILE COMMANDS${RESET}
   init                    Initialize CPS, snapshot current config as 'default'
-  create <name> [flags]   Create profile (--from <p> | --fresh)
+  create <name> [flags]   Create profile (--from <p> | --fresh | --template <url>)
   use <name>              Switch to profile
   list                    List all profiles
   current                 Print active profile name
@@ -29,6 +29,8 @@ ${BOLD}PROFILE COMMANDS${RESET}
   export <name> [path]    Export profile as .tar.gz archive
   import <archive> [name] Import profile from archive
   clone <url>             Clone profiles from remote (first-time setup)
+  status                  Show diff between profile and live state
+  snapshot [--desktop]    Save live config back to profile
 
 ${BOLD}GIT BACKUP & SYNC${RESET}
   save [message]          Commit current state with message
@@ -40,6 +42,11 @@ ${BOLD}GIT BACKUP & SYNC${RESET}
   sync enable <url>       Enable auto-sync to remote
   sync disable            Disable auto-sync
   sync status             Show sync state (default)
+
+${BOLD}CLAUDE DESKTOP${RESET}
+  desktop save            Save Claude Desktop config to profile
+  desktop restore         Restore Claude Desktop config from profile
+  desktop status          Check if desktop config is synced
 
 ${BOLD}UTILITY${RESET}
   diff [p1] [p2]          Compare two profiles (default: active vs all)
@@ -92,6 +99,7 @@ parse_create_args() {
   local name=""
   local from=""
   local fresh="0"
+  local template=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -102,6 +110,11 @@ parse_create_args() {
         ;;
       --fresh)
         fresh="1"
+        ;;
+      --template)
+        shift
+        template="${1:-}"
+        [[ -z "$template" ]] && die "--template requires a URL"
         ;;
       *)
         if [[ -z "$name" ]]; then
@@ -114,11 +127,15 @@ parse_create_args() {
     shift
   done
 
-  if [[ "$fresh" == "1" ]] && [[ -n "$from" ]]; then
-    die "--fresh and --from are mutually exclusive."
+  local flags=0
+  [[ "$fresh" == "1" ]] && flags=$((flags + 1))
+  [[ -n "$from" ]] && flags=$((flags + 1))
+  [[ -n "$template" ]] && flags=$((flags + 1))
+  if [[ $flags -gt 1 ]]; then
+    die "--fresh, --from, and --template are mutually exclusive."
   fi
 
-  cmd_create "$name" "$from" "$fresh"
+  cmd_create "$name" "$from" "$fresh" "$template"
 }
 
 main() {
@@ -136,6 +153,9 @@ main() {
     import)      cmd_import "${1:-}" "${2:-}" ;;
     rename|mv)   cmd_rename "${1:-}" "${2:-}" ;;
     clone)       cmd_clone "${1:-}" ;;
+    status)      cmd_status ;;
+    snapshot)    shift 2>/dev/null || true; cmd_snapshot "$@" ;;
+    desktop)     cmd_desktop "${1:-}" ;;
     save)        cmd_save "${1:-}" ;;
     log)         cmd_log "${1:-}" ;;
     rollback)    cmd_rollback "${1:-}" ;;

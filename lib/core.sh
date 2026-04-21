@@ -52,9 +52,10 @@ cmd_create() {
   local name="${1:-}"
   local from="${2:-}"
   local fresh="${3:-}"
+  local template="${4:-}"
 
   if [[ -z "$name" ]]; then
-    die "Usage: cps create <name> [--from <profile> | --fresh]"
+    die "Usage: cps create <name> [--from <profile> | --fresh | --template <url>]"
   fi
 
   validate_profile_name "$name"
@@ -66,7 +67,21 @@ cmd_create() {
   local target
   target="$(profile_dir "$name")"
 
-  if [[ "$fresh" == "1" ]]; then
+  if [[ -n "$template" ]]; then
+    info "Creating '$name' from template..."
+    local tmpdir
+    tmpdir="$(mktemp -d)"
+    git clone -q --depth 1 "$template" "$tmpdir" || { rm -rf "$tmpdir"; die "Failed to clone template."; }
+    rm -rf "$tmpdir/.git"
+    mkdir -p "$target"
+    if [[ -d "$tmpdir/claude" ]]; then
+      cp -a "$tmpdir/." "$target/"
+    else
+      mkdir -p "$target/claude"
+      cp -a "$tmpdir/." "$target/claude/"
+    fi
+    rm -rf "$tmpdir"
+  elif [[ "$fresh" == "1" ]]; then
     info "Creating fresh profile '$name'..."
     create_fresh_profile "$target"
   elif [[ -n "$from" ]]; then
@@ -119,6 +134,14 @@ cmd_use() {
   restore_claude_json "$name"
   symlink_claude_dir "$name"
   echo "$name" > "$CPS_ACTIVE_FILE"
+
+  local profile_desktop
+  profile_desktop="$(profile_dir "$name")/desktop.json"
+  local desktop_cfg="$HOME/.config/Claude/claude_desktop_config.json"
+  if [[ -f "$profile_desktop" ]]; then
+    mkdir -p "$(dirname "$desktop_cfg")"
+    cp -a "$profile_desktop" "$desktop_cfg"
+  fi
 
   git_auto_commit "Switch to profile '$name'"
   git_auto_push
@@ -361,6 +384,193 @@ cmd_delete() {
   git_auto_push
 
   ok "Deleted profile '$name'"
+}
+
+cmd_status() {
+  require_init
+
+  local active
+  active="$(get_active_profile)"
+  if [[ -z "$active" ]]; then
+    die "No active profile."
+  fi
+
+  local profile_cdir
+  profile_cdir="$(profile_claude_dir "$active")"
+  local profile_cjson
+  profile_cjson="$(profile_claude_json "$active")"
+
+  printf "${BOLD}Profile: %s${RESET}\n\n" "$active"
+
+  local has_changes=0
+
+  for item in "${PROFILE_CLAUDE_DIR_ITEMS[@]}"; do
+    local live="$CLAUDE_DIR/$item"
+    local stored="$profile_cdir/$item"
+
+    if [[ -d "$live" ]] && [[ -d "$stored" ]]; then
+      local diffs
+      diffs="$(diff -rq "$stored" "$live" 2>/dev/null || true)"
+      if [[ -n "$diffs" ]]; then
+        printf "${YELLOW}~${RESET} %s/\n" "$item"
+        echo "$diffs" | while IFS= read -r line; do
+          printf "    %s\n" "$line"
+        done
+        has_changes=1
+      fi
+    elif [[ -f "$live" ]] && [[ -f "$stored" ]]; then
+      if ! diff -q "$stored" "$live" &>/dev/null; then
+        printf "${YELLOW}~${RESET} %s\n" "$item"
+        has_changes=1
+      fi
+    elif [[ -e "$live" ]] && [[ ! -e "$stored" ]]; then
+      printf "${GREEN}+${RESET} %s (new, not in profile)\n" "$item"
+      has_changes=1
+    elif [[ ! -e "$live" ]] && [[ -e "$stored" ]]; then
+      printf "${RED}-${RESET} %s (in profile, missing live)\n" "$item"
+      has_changes=1
+    fi
+  done
+
+  if [[ -f "$CLAUDE_JSON" ]] && [[ -f "$profile_cjson" ]]; then
+    if ! diff -q "$profile_cjson" "$CLAUDE_JSON" &>/dev/null; then
+      printf "${YELLOW}~${RESET} claude.json\n"
+      has_changes=1
+    fi
+  fi
+
+  local desktop_cfg="$HOME/.config/Claude/claude_desktop_config.json"
+  local profile_desktop
+  profile_desktop="$(profile_dir "$active")/desktop.json"
+  if [[ -f "$desktop_cfg" ]] && [[ -f "$profile_desktop" ]]; then
+    if ! diff -q "$profile_desktop" "$desktop_cfg" &>/dev/null; then
+      printf "${YELLOW}~${RESET} desktop.json (Claude Desktop)\n"
+      has_changes=1
+    fi
+  elif [[ -f "$desktop_cfg" ]] && [[ ! -f "$profile_desktop" ]]; then
+    printf "${DIM}?${RESET} desktop.json (Claude Desktop not tracked — use 'cps snapshot --desktop')\n"
+  fi
+
+  if [[ $has_changes -eq 0 ]]; then
+    ok "Clean — profile matches live state."
+  else
+    echo ""
+    info "Run 'cps snapshot' to save live changes to profile."
+  fi
+}
+
+cmd_snapshot() {
+  require_init
+  local include_desktop=0
+
+  for arg in "$@"; do
+    case "$arg" in
+      --desktop) include_desktop=1 ;;
+      *) die "Unknown option: $arg" ;;
+    esac
+  done
+
+  local active
+  active="$(get_active_profile)"
+  if [[ -z "$active" ]]; then
+    die "No active profile."
+  fi
+
+  save_current_claude_json
+
+  local profile_cdir
+  profile_cdir="$(profile_claude_dir "$active")"
+
+  local live_resolved
+  live_resolved="$(readlink -f "$CLAUDE_DIR" 2>/dev/null || echo "$CLAUDE_DIR")"
+  local stored_resolved
+  stored_resolved="$(readlink -f "$profile_cdir" 2>/dev/null || echo "$profile_cdir")"
+
+  if [[ "$live_resolved" != "$stored_resolved" ]]; then
+    for item in "${PROFILE_CLAUDE_DIR_ITEMS[@]}"; do
+      local live="$CLAUDE_DIR/$item"
+      local stored="$profile_cdir/$item"
+      if [[ -e "$live" ]]; then
+        safe_copy "$live" "$stored"
+      fi
+    done
+  fi
+
+  if [[ "$include_desktop" == "1" ]]; then
+    local desktop_cfg="$HOME/.config/Claude/claude_desktop_config.json"
+    if [[ -f "$desktop_cfg" ]]; then
+      cp -a "$desktop_cfg" "$(profile_dir "$active")/desktop.json"
+      ok "Saved Claude Desktop config"
+    else
+      warn "Claude Desktop config not found at $desktop_cfg"
+    fi
+  fi
+
+  git_auto_commit "Snapshot profile '$active'"
+  git_auto_push
+
+  ok "Snapshot saved for '$active'"
+}
+
+cmd_desktop() {
+  require_init
+  local subcmd="${1:-status}"
+
+  local desktop_cfg="$HOME/.config/Claude/claude_desktop_config.json"
+
+  local active
+  active="$(get_active_profile)"
+  if [[ -z "$active" ]]; then
+    die "No active profile."
+  fi
+
+  local profile_desktop
+  profile_desktop="$(profile_dir "$active")/desktop.json"
+
+  case "$subcmd" in
+    save)
+      if [[ ! -f "$desktop_cfg" ]]; then
+        die "Claude Desktop config not found at $desktop_cfg"
+      fi
+      cp -a "$desktop_cfg" "$profile_desktop"
+      git_auto_commit "Save Claude Desktop config for '$active'"
+      git_auto_push
+      ok "Saved Claude Desktop config to profile '$active'"
+      ;;
+
+    restore)
+      if [[ ! -f "$profile_desktop" ]]; then
+        die "No desktop config stored for profile '$active'. Run 'cps desktop save' first."
+      fi
+      mkdir -p "$(dirname "$desktop_cfg")"
+      cp -a "$profile_desktop" "$desktop_cfg"
+      ok "Restored Claude Desktop config from profile '$active'"
+      ;;
+
+    status)
+      if [[ ! -f "$desktop_cfg" ]]; then
+        info "Claude Desktop: not installed"
+        return
+      fi
+
+      if [[ ! -f "$profile_desktop" ]]; then
+        info "Claude Desktop: config exists but not tracked"
+        info "Run 'cps desktop save' to add to profile"
+        return
+      fi
+
+      if diff -q "$profile_desktop" "$desktop_cfg" &>/dev/null; then
+        ok "Claude Desktop: synced with profile"
+      else
+        warn "Claude Desktop: config differs from profile"
+        info "Run 'cps desktop save' to update, or 'cps desktop restore' to revert"
+      fi
+      ;;
+
+    *)
+      die "Usage: cps desktop [save|restore|status]"
+      ;;
+  esac
 }
 
 cmd_export() {

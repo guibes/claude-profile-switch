@@ -29,6 +29,9 @@ _cps() {
     'export:Export profile as archive'
     'import:Import profile from archive'
     'clone:Clone profiles from remote'
+    'status:Show diff between profile and live state'
+    'snapshot:Save live config back to profile'
+    'desktop:Manage Claude Desktop config'
     'diff:Compare profiles'
     'edit:Open profile in editor'
     'doctor:Health check'
@@ -54,7 +57,8 @@ _cps() {
           _arguments \
             '1:name:' \
             '--from[Copy from profile]:profile:_cps_profiles' \
-            '--fresh[Create clean profile with no inherited config]'
+            '--fresh[Create clean profile with no inherited config]' \
+            '--template[Create from git template]:url:'
           ;;
         init)
           _arguments \
@@ -73,6 +77,14 @@ _cps() {
           local -a sync_cmds
           sync_cmds=('enable:Enable auto-sync' 'disable:Disable auto-sync' 'status:Show sync state')
           _describe 'sync command' sync_cmds
+          ;;
+        desktop)
+          local -a desktop_cmds
+          desktop_cmds=('save:Save desktop config' 'restore:Restore desktop config' 'status:Check sync')
+          _describe 'desktop command' desktop_cmds
+          ;;
+        snapshot)
+          _arguments '--desktop[Include Claude Desktop config]'
           ;;
       esac
       ;;
