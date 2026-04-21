@@ -20,7 +20,7 @@ ${BOLD}USAGE${RESET}
 
 ${BOLD}PROFILE COMMANDS${RESET}
   init                    Initialize CPS, snapshot current config as 'default'
-  create <name> [--from]  Create profile (from active or specified profile)
+  create <name> [flags]   Create profile (--from <p> | --fresh)
   use <name>              Switch to profile
   list                    List all profiles
   current                 Print active profile name
@@ -56,6 +56,7 @@ ${BOLD}EXAMPLES${RESET}
   cps init                          # First-time setup
   cps create work                   # New profile from current
   cps create test --from work       # New profile from 'work'
+  cps create experiment --fresh     # Clean profile, no inherited config
   cps use work                      # Switch to 'work'
   cps list                          # Show all profiles
   cps save "Added new MCP servers"  # Git commit with message
@@ -85,6 +86,7 @@ parse_init_args() {
 parse_create_args() {
   local name=""
   local from=""
+  local fresh="0"
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -92,6 +94,9 @@ parse_create_args() {
         shift
         from="${1:-}"
         [[ -z "$from" ]] && die "--from requires a profile name"
+        ;;
+      --fresh)
+        fresh="1"
         ;;
       *)
         if [[ -z "$name" ]]; then
@@ -104,7 +109,11 @@ parse_create_args() {
     shift
   done
 
-  cmd_create "$name" "$from"
+  if [[ "$fresh" == "1" ]] && [[ -n "$from" ]]; then
+    die "--fresh and --from are mutually exclusive."
+  fi
+
+  cmd_create "$name" "$from" "$fresh"
 }
 
 main() {

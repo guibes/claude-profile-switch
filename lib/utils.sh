@@ -168,6 +168,17 @@ snapshot_claude_config() {
 }
 
 # Restore ~/.claude.json from a profile
+create_fresh_profile() {
+  local target_dir="$1"
+  local claude_subdir="$target_dir/claude"
+
+  mkdir -p "$claude_subdir/skills" "$claude_subdir/commands" "$claude_subdir/agents"
+
+  echo '{}' > "$claude_subdir/settings.json"
+  echo '{}' > "$claude_subdir/config.json"
+  echo '{}' > "$target_dir/claude.json"
+}
+
 restore_claude_json() {
   local profile_name="$1"
   local src

@@ -15,7 +15,7 @@ _cps_completions() {
       return
       ;;
     create)
-      COMPREPLY=($(compgen -W "--from" -- "$cur"))
+      COMPREPLY=($(compgen -W "--from --fresh" -- "$cur"))
       return
       ;;
     --from)

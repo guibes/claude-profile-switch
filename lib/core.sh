@@ -50,9 +50,10 @@ cmd_create() {
   require_init
   local name="${1:-}"
   local from="${2:-}"
+  local fresh="${3:-}"
 
   if [[ -z "$name" ]]; then
-    die "Usage: cps create <name> [--from <profile>]"
+    die "Usage: cps create <name> [--from <profile> | --fresh]"
   fi
 
   validate_profile_name "$name"
@@ -64,7 +65,10 @@ cmd_create() {
   local target
   target="$(profile_dir "$name")"
 
-  if [[ -n "$from" ]]; then
+  if [[ "$fresh" == "1" ]]; then
+    info "Creating fresh profile '$name'..."
+    create_fresh_profile "$target"
+  elif [[ -n "$from" ]]; then
     profile_exists "$from" || die "Source profile '$from' not found."
     info "Creating '$name' from '$from'..."
     cp -a "$(profile_dir "$from")" "$target"

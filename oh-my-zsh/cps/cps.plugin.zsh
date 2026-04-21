@@ -144,7 +144,8 @@ _cps() {
         create)
           _arguments \
             '1:name:' \
-            '--from[Copy from profile]:profile:_cps_profiles'
+            '--from[Copy from profile]:profile:_cps_profiles' \
+            '--fresh[Create clean profile with no inherited config]'
           ;;
         init)
           _arguments \
