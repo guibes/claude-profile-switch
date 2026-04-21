@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CPS_VERSION="0.1.0"
+CPS_VERSION="0.2.0"
 
 CPS_ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 
@@ -25,6 +25,10 @@ ${BOLD}PROFILE COMMANDS${RESET}
   list                    List all profiles
   current                 Print active profile name
   delete <name>           Delete a profile
+  rename <old> <new>      Rename a profile
+  export <name> [path]    Export profile as .tar.gz archive
+  import <archive> [name] Import profile from archive
+  clone <url>             Clone profiles from remote (first-time setup)
 
 ${BOLD}GIT BACKUP & SYNC${RESET}
   save [message]          Commit current state with message
@@ -57,9 +61,10 @@ ${BOLD}EXAMPLES${RESET}
   cps create work                   # New profile from current
   cps create test --from work       # New profile from 'work'
   cps create experiment --fresh     # Clean profile, no inherited config
-  cps use work                      # Switch to 'work'
-  cps list                          # Show all profiles
-  cps save "Added new MCP servers"  # Git commit with message
+  cps rename work office            # Rename profile
+  cps export work ./work-backup.cps.tar.gz  # Export
+  cps import ./work-backup.cps.tar.gz       # Import
+  cps clone git@github.com:user/cps-profiles.git  # First-time setup
   cps sync enable git@github.com:user/cps-profiles.git  # Auto-sync
   cps sync status                   # Check sync state
 EOF
@@ -127,6 +132,10 @@ main() {
     list|ls)     cmd_list ;;
     current)     cmd_current ;;
     delete|rm)   cmd_delete "${1:-}" ;;
+    export)      cmd_export "${1:-}" "${2:-}" ;;
+    import)      cmd_import "${1:-}" "${2:-}" ;;
+    rename|mv)   cmd_rename "${1:-}" "${2:-}" ;;
+    clone)       cmd_clone "${1:-}" ;;
     save)        cmd_save "${1:-}" ;;
     log)         cmd_log "${1:-}" ;;
     rollback)    cmd_rollback "${1:-}" ;;

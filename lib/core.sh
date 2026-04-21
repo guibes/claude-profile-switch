@@ -111,6 +111,7 @@ cmd_use() {
 
   if [[ -n "$active" ]] && profile_exists "$active"; then
     save_current_claude_json
+    run_profile_hooks "pre-switch" "$active"
     git_auto_commit "Auto-save '$active' before switch"
   fi
 
@@ -119,6 +120,7 @@ cmd_use() {
 
   git_auto_commit "Switch to profile '$name'"
   git_auto_push
+  run_profile_hooks "post-switch" "$name"
 
   ok "Switched to profile '$name'"
 
@@ -182,7 +184,7 @@ cmd_diff() {
 
   if [[ -z "$p1" ]]; then
     p1="$(get_active_profile)"
-    [[ -z "$p1" ]] && die "No active profile. Specify two profiles: cps diff <p1> <p2>"
+    if [[ -z "$p1" ]]; then die "No active profile. Specify two profiles: cps diff <p1> <p2>"; fi
   fi
 
   validate_profile_name "$p1"
@@ -212,7 +214,7 @@ cmd_edit() {
 
   if [[ -z "$name" ]]; then
     name="$(get_active_profile)"
-    [[ -z "$name" ]] && die "No active profile. Specify a profile: cps edit <name>"
+    if [[ -z "$name" ]]; then die "No active profile. Specify a profile: cps edit <name>"; fi
   fi
 
   validate_profile_name "$name"
@@ -348,4 +350,161 @@ cmd_delete() {
   git_auto_push
 
   ok "Deleted profile '$name'"
+}
+
+cmd_export() {
+  require_init
+  local name="${1:-}"
+  local dest="${2:-}"
+
+  if [[ -z "$name" ]]; then
+    die "Usage: cps export <name> [path]"
+  fi
+
+  validate_profile_name "$name"
+  profile_exists "$name" || die "Profile '$name' not found."
+
+  if [[ -z "$dest" ]]; then
+    dest="./${name}.cps.tar.gz"
+  fi
+
+  local pdir
+  pdir="$(profile_dir "$name")"
+
+  tar -czf "$dest" -C "$CPS_PROFILES_DIR" "$name"
+
+  ok "Exported '$name' to $dest"
+}
+
+cmd_import() {
+  require_init
+  local archive="${1:-}"
+  local name="${2:-}"
+
+  if [[ -z "$archive" ]]; then
+    die "Usage: cps import <archive> [name]"
+  fi
+
+  [[ -f "$archive" ]] || die "File not found: $archive"
+
+  local archive_root
+  archive_root="$(tar -tzf "$archive" 2>/dev/null | head -1 | cut -d'/' -f1 || true)"
+  if [[ -z "$archive_root" ]]; then
+    die "Cannot read archive."
+  fi
+
+  if [[ -z "$name" ]]; then
+    name="$archive_root"
+  fi
+
+  validate_profile_name "$name"
+
+  if profile_exists "$name"; then
+    die "Profile '$name' already exists. Delete it first or specify a different name."
+  fi
+
+  local tmpdir
+  tmpdir="$(mktemp -d)"
+
+  tar -xzf "$archive" -C "$tmpdir" || { rm -rf "$tmpdir"; die "Failed to extract archive."; }
+
+  if [[ ! -d "$tmpdir/$archive_root" ]]; then
+    rm -rf "$tmpdir"
+    die "Archive doesn't contain expected directory '$archive_root'."
+  fi
+
+  mv "$tmpdir/$archive_root" "$CPS_PROFILES_DIR/$name"
+  rm -rf "$tmpdir"
+
+  git_auto_commit "Import profile '$name'"
+  git_auto_push
+
+  ok "Imported profile '$name'"
+}
+
+cmd_rename() {
+  require_init
+  local old="${1:-}"
+  local new="${2:-}"
+
+  if [[ -z "$old" ]] || [[ -z "$new" ]]; then
+    die "Usage: cps rename <old> <new>"
+  fi
+
+  validate_profile_name "$old"
+  validate_profile_name "$new"
+  profile_exists "$old" || die "Profile '$old' not found."
+
+  if profile_exists "$new"; then
+    die "Profile '$new' already exists."
+  fi
+
+  mv "$(profile_dir "$old")" "$(profile_dir "$new")"
+
+  local active
+  active="$(get_active_profile)"
+  if [[ "$old" == "$active" ]]; then
+    echo "$new" > "$CPS_ACTIVE_FILE"
+  fi
+
+  git_auto_commit "Rename profile '$old' to '$new'"
+  git_auto_push
+
+  ok "Renamed '$old' to '$new'"
+}
+
+cmd_clone() {
+  local url="${1:-}"
+
+  if [[ -z "$url" ]]; then
+    die "Usage: cps clone <remote-url>"
+  fi
+
+  if [[ -d "$CPS_DATA_DIR" ]] && [[ -d "$CPS_PROFILES_DIR" ]]; then
+    local existing
+    existing="$(list_profiles | wc -l)"
+    if [[ "$existing" -gt 0 ]]; then
+      die "CPS already has profiles. Use 'cps pull' to sync, or remove $CPS_DATA_DIR first."
+    fi
+  fi
+
+  info "Cloning profiles from remote..."
+  rm -rf "$CPS_DATA_DIR"
+  git clone -q "$url" "$CPS_DATA_DIR" || die "Clone failed."
+
+  local active
+  active="$(get_active_profile)"
+  if [[ -n "$active" ]] && profile_exists "$active"; then
+    restore_claude_json "$active"
+    ok "Cloned and activated profile '$active'"
+  else
+    local first
+    first="$(list_profiles | head -1)"
+    if [[ -n "$first" ]]; then
+      echo "$first" > "$CPS_ACTIVE_FILE"
+      restore_claude_json "$first"
+      ok "Cloned profiles. Activated '$first'"
+    else
+      ok "Cloned. No profiles found in remote."
+    fi
+  fi
+
+  info "Run: eval \"\$(cps shell-init)\" or restart your shell"
+}
+
+run_profile_hooks() {
+  local hook_name="$1"
+  local profile_name="$2"
+  local hooks_dir
+  hooks_dir="$(profile_claude_dir "$profile_name")/hooks"
+
+  if [[ ! -d "$hooks_dir" ]]; then
+    return
+  fi
+
+  local hook_file="$hooks_dir/$hook_name"
+  if [[ -x "$hook_file" ]]; then
+    info "Running $hook_name hook..."
+    CPS_PROFILE="$profile_name" CPS_HOOK="$hook_name" "$hook_file" || warn "Hook $hook_name exited with error"
+  fi
 }

@@ -24,6 +24,7 @@ PROFILE_CLAUDE_DIR_ITEMS=(
   "skills"
   "commands"
   "agents"
+  "hooks"
 )
 
 # ── Colors ─────────────────────────────────────────────────────────────────────
@@ -172,11 +173,23 @@ create_fresh_profile() {
   local target_dir="$1"
   local claude_subdir="$target_dir/claude"
 
-  mkdir -p "$claude_subdir/skills" "$claude_subdir/commands" "$claude_subdir/agents"
+  mkdir -p "$claude_subdir/skills" "$claude_subdir/commands" "$claude_subdir/agents" "$claude_subdir/hooks"
 
   echo '{}' > "$claude_subdir/settings.json"
   echo '{}' > "$claude_subdir/config.json"
   echo '{}' > "$target_dir/claude.json"
+}
+
+get_profile_isolated_items() {
+  local name="$1"
+  local isolate_file
+  isolate_file="$(profile_dir "$name")/.cps-isolate"
+
+  if [[ -f "$isolate_file" ]]; then
+    grep -v '^#' "$isolate_file" | grep -v '^$'
+  else
+    printf '%s\n' "${PROFILE_CLAUDE_DIR_ITEMS[@]}"
+  fi
 }
 
 restore_claude_json() {

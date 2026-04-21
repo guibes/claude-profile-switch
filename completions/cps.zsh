@@ -25,6 +25,10 @@ _cps() {
     'push:Push to remote'
     'pull:Pull from remote'
     'sync:Auto-sync management (enable/disable/status)'
+    'rename:Rename a profile'
+    'export:Export profile as archive'
+    'import:Import profile from archive'
+    'clone:Clone profiles from remote'
     'diff:Compare profiles'
     'edit:Open profile in editor'
     'doctor:Health check'
@@ -43,7 +47,7 @@ _cps() {
       ;;
     args)
       case $words[1] in
-        use|delete|rm|edit|log|diff)
+        use|delete|rm|edit|log|diff|export|rename)
           _cps_profiles
           ;;
         create)
