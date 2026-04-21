@@ -15,15 +15,37 @@ Manage multiple Claude Code configurations — different accounts, skills, MCP s
 
 ## Install
 
+### Homebrew (macOS/Linux)
+
+```sh
+brew tap guibes/tap https://github.com/guibes/claude-profile-switch
+brew install cps
+```
+
+### Arch Linux (AUR)
+
+```sh
+git clone https://github.com/guibes/claude-profile-switch.git
+cd claude-profile-switch/aur && makepkg -si
+```
+
+### Git clone
+
 ```sh
 git clone https://github.com/guibes/claude-profile-switch.git ~/.local/share/cps-bin
 ln -sf ~/.local/share/cps-bin/bin/cps ~/.local/bin/cps
 ```
 
-Or with the installer:
+### One-liner
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/guibes/claude-profile-switch/main/install.sh | bash
+```
+
+### Upgrade
+
+```sh
+cps upgrade
 ```
 
 ## Quick Start
@@ -54,10 +76,18 @@ cps use work
 | `cps init --key <path>` | Import age key on new machine |
 | `cps create <name>` | Create profile from active profile |
 | `cps create <name> --from <p>` | Create profile from another profile |
+| `cps create <name> --fresh` | Create clean profile (no inherited config) |
+| `cps create <name> --template <url>` | Create profile from git template |
 | `cps use <name>` | Switch to profile |
 | `cps list` | List all profiles (active marked with `*`) |
 | `cps current` | Print active profile name |
 | `cps delete <name>` | Delete profile (cannot delete active) |
+| `cps rename <old> <new>` | Rename a profile |
+| `cps export <name> [path]` | Export profile as `.tar.gz` |
+| `cps import <archive> [name]` | Import profile from archive |
+| `cps clone <url>` | Clone profiles from remote (first-time setup) |
+| `cps status` | Show diff between profile and live state |
+| `cps snapshot [--desktop]` | Save live config back to profile |
 
 ### Git Backup & Sync
 
@@ -73,6 +103,14 @@ cps use work
 | `cps sync disable` | Disable auto-sync |
 | `cps sync status` | Show sync state |
 
+### Claude Desktop
+
+| Command | Description |
+|---------|-------------|
+| `cps desktop save` | Save Claude Desktop config to profile |
+| `cps desktop restore` | Restore Claude Desktop config from profile |
+| `cps desktop status` | Check if desktop config is synced |
+
 ### Utility
 
 | Command | Description |
@@ -80,6 +118,7 @@ cps use work
 | `cps diff [p1] [p2]` | Compare profiles |
 | `cps edit [name]` | Open profile in `$EDITOR` |
 | `cps doctor` | Health check |
+| `cps upgrade` | Self-update to latest version |
 | `cps shell-init` | Output shell integration code |
 
 ## Shell Integration
