@@ -192,6 +192,22 @@ get_profile_isolated_items() {
   fi
 }
 
+symlink_claude_dir() {
+  local name="$1"
+  local target
+  target="$(profile_claude_dir "$name")"
+
+  if [[ -L "$CLAUDE_DIR" ]]; then
+    rm -f "$CLAUDE_DIR"
+  elif [[ -d "$CLAUDE_DIR" ]]; then
+    local backup="$HOME/.claude.bak.$(date +%s)"
+    mv "$CLAUDE_DIR" "$backup"
+    warn "Backed up original ~/.claude/ to $backup"
+  fi
+
+  ln -sf "$target" "$CLAUDE_DIR"
+}
+
 restore_claude_json() {
   local profile_name="$1"
   local src

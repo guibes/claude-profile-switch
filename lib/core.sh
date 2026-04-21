@@ -25,6 +25,7 @@ cmd_init() {
   snapshot_claude_config "$profile_path"
 
   echo "$default_profile" > "$CPS_ACTIVE_FILE"
+  symlink_claude_dir "$default_profile"
 
   git_init_repo
 
@@ -116,6 +117,7 @@ cmd_use() {
   fi
 
   restore_claude_json "$name"
+  symlink_claude_dir "$name"
   echo "$name" > "$CPS_ACTIVE_FILE"
 
   git_auto_commit "Switch to profile '$name'"
@@ -288,6 +290,15 @@ cmd_doctor() {
     ok "Shell integration active"
   else
     warn "Shell integration not detected. Add: eval \"\$(cps shell-init)\""
+  fi
+
+  if [[ -L "$CLAUDE_DIR" ]]; then
+    local link_target
+    link_target="$(readlink -f "$CLAUDE_DIR")"
+    ok "~/.claude/ symlink: $link_target"
+  elif [[ -d "$CLAUDE_DIR" ]]; then
+    warn "~/.claude/ is a real directory (not symlinked). Run 'cps use <profile>' to fix."
+    ((issues++))
   fi
 
   if [[ -n "${CLAUDE_CONFIG_DIR:-}" ]]; then
@@ -476,13 +487,15 @@ cmd_clone() {
   active="$(get_active_profile)"
   if [[ -n "$active" ]] && profile_exists "$active"; then
     restore_claude_json "$active"
+    symlink_claude_dir "$active"
     ok "Cloned and activated profile '$active'"
   else
     local first
-    first="$(list_profiles | head -1)"
+    first="$(list_profiles | head -1 || true)"
     if [[ -n "$first" ]]; then
       echo "$first" > "$CPS_ACTIVE_FILE"
       restore_claude_json "$first"
+      symlink_claude_dir "$first"
       ok "Cloned profiles. Activated '$first'"
     else
       ok "Cloned. No profiles found in remote."
