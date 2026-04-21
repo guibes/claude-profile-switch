@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CPS_VERSION="0.1.0"
+
+CPS_ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+
+source "$CPS_ROOT/lib/utils.sh"
+source "$CPS_ROOT/lib/git.sh"
+source "$CPS_ROOT/lib/crypto.sh"
+source "$CPS_ROOT/lib/core.sh"
+source "$CPS_ROOT/lib/shell.sh"
+
+show_help() {
+  cat << EOF
+${BOLD}cps${RESET} — Claude Profile Switch v${CPS_VERSION}
+
+${BOLD}USAGE${RESET}
+  cps <command> [args]
+
+${BOLD}PROFILE COMMANDS${RESET}
+  init                    Initialize CPS, snapshot current config as 'default'
+  create <name> [--from]  Create profile (from active or specified profile)
+  use <name>              Switch to profile
+  list                    List all profiles
+  current                 Print active profile name
+  delete <name>           Delete a profile
+
+${BOLD}GIT BACKUP${RESET}
+  save [message]          Commit current state with message
+  log [profile]           Show change history
+  rollback <commit>       Restore to previous commit
+  remote [url]            Get/set git remote
+  push                    Push to remote
+  pull                    Pull from remote
+
+${BOLD}UTILITY${RESET}
+  diff [p1] [p2]          Compare two profiles (default: active vs all)
+  edit [name]             Open profile dir in \$EDITOR
+  doctor                  Health check (paths, encryption, git, integrity)
+  shell-init              Output shell integration code
+  help                    Show this help
+
+${BOLD}ENCRYPTION${RESET}
+  init --key <path>       Import age key (for new machine setup)
+  Credentials auto-encrypted if age is installed during init.
+
+${BOLD}SHELL INTEGRATION${RESET}
+  Add to ~/.zshrc or ~/.bashrc:
+    eval "\$(cps shell-init)"
+
+${BOLD}EXAMPLES${RESET}
+  cps init                          # First-time setup
+  cps create work                   # New profile from current
+  cps create test --from work       # New profile from 'work'
+  cps use work                      # Switch to 'work'
+  cps list                          # Show all profiles
+  cps save "Added new MCP servers"  # Git commit with message
+EOF
+}
+
+parse_init_args() {
+  local key_path=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --key)
+        shift
+        key_path="${1:-}"
+        [[ -z "$key_path" ]] && die "--key requires a file path"
+        ;;
+      *) die "Unknown init option: $1" ;;
+    esac
+    shift
+  done
+
+  cmd_init "$key_path"
+}
+
+parse_create_args() {
+  local name=""
+  local from=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --from)
+        shift
+        from="${1:-}"
+        [[ -z "$from" ]] && die "--from requires a profile name"
+        ;;
+      *)
+        if [[ -z "$name" ]]; then
+          name="$1"
+        else
+          die "Unexpected argument: $1"
+        fi
+        ;;
+    esac
+    shift
+  done
+
+  cmd_create "$name" "$from"
+}
+
+main() {
+  local command="${1:-help}"
+  shift 2>/dev/null || true
+
+  case "$command" in
+    init)        parse_init_args "$@" ;;
+    create)      parse_create_args "$@" ;;
+    use)         cmd_use "${1:-}" ;;
+    list|ls)     cmd_list ;;
+    current)     cmd_current ;;
+    delete|rm)   cmd_delete "${1:-}" ;;
+    save)        cmd_save "${1:-}" ;;
+    log)         cmd_log "${1:-}" ;;
+    rollback)    cmd_rollback "${1:-}" ;;
+    remote)      cmd_remote "${1:-}" ;;
+    push)        cmd_push ;;
+    pull)        cmd_pull ;;
+    diff)        cmd_diff "${1:-}" "${2:-}" ;;
+    edit)        cmd_edit "${1:-}" ;;
+    doctor)      cmd_doctor ;;
+    shell-init)  cmd_shell_init ;;
+    help|--help|-h) show_help ;;
+    version|--version|-v) echo "cps $CPS_VERSION" ;;
+    *)           err "Unknown command: $command"; echo ""; show_help; exit 1 ;;
+  esac
+}
+
+main "$@"
