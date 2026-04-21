@@ -26,13 +26,16 @@ ${BOLD}PROFILE COMMANDS${RESET}
   current                 Print active profile name
   delete <name>           Delete a profile
 
-${BOLD}GIT BACKUP${RESET}
+${BOLD}GIT BACKUP & SYNC${RESET}
   save [message]          Commit current state with message
   log [profile]           Show change history
   rollback <commit>       Restore to previous commit
   remote [url]            Get/set git remote
   push                    Push to remote
   pull                    Pull from remote
+  sync enable <url>       Enable auto-sync to remote
+  sync disable            Disable auto-sync
+  sync status             Show sync state (default)
 
 ${BOLD}UTILITY${RESET}
   diff [p1] [p2]          Compare two profiles (default: active vs all)
@@ -56,6 +59,8 @@ ${BOLD}EXAMPLES${RESET}
   cps use work                      # Switch to 'work'
   cps list                          # Show all profiles
   cps save "Added new MCP servers"  # Git commit with message
+  cps sync enable git@github.com:user/cps-profiles.git  # Auto-sync
+  cps sync status                   # Check sync state
 EOF
 }
 
@@ -119,6 +124,7 @@ main() {
     remote)      cmd_remote "${1:-}" ;;
     push)        cmd_push ;;
     pull)        cmd_pull ;;
+    sync)        cmd_sync "${1:-}" "${2:-}" ;;
     diff)        cmd_diff "${1:-}" "${2:-}" ;;
     edit)        cmd_edit "${1:-}" ;;
     doctor)      cmd_doctor ;;

@@ -82,6 +82,7 @@ cmd_create() {
   fi
 
   git_auto_commit "Create profile '$name'"
+  git_auto_push
   ok "Created profile '$name'"
 }
 
@@ -113,6 +114,7 @@ cmd_use() {
   echo "$name" > "$CPS_ACTIVE_FILE"
 
   git_auto_commit "Switch to profile '$name'"
+  git_auto_push
 
   ok "Switched to profile '$name'"
 
@@ -266,7 +268,7 @@ cmd_doctor() {
   profiles="$(list_profiles)"
   if [[ -n "$profiles" ]]; then
     while IFS= read -r name; do
-      ((profile_count++))
+      profile_count=$((profile_count + 1))
       local cdir
       cdir="$(profile_claude_dir "$name")"
       if [[ ! -d "$cdir" ]]; then
@@ -290,6 +292,23 @@ cmd_doctor() {
     fi
   else
     warn "CLAUDE_CONFIG_DIR not set"
+  fi
+
+  if sync_enabled; then
+    ok "Auto-sync: enabled (device: $CPS_DEVICE_NAME)"
+    if has_remote; then
+      local sync_state
+      sync_state="$(git_sync_status)"
+      case "$sync_state" in
+        synced)       ok "Sync status: $sync_state" ;;
+        fetch-failed) err "Sync status: cannot reach remote"; ((issues++)) ;;
+        *)            warn "Sync status: $sync_state" ;;
+      esac
+    else
+      err "Auto-sync enabled but no remote configured"; ((issues++))
+    fi
+  else
+    info "Auto-sync: disabled"
   fi
 
   echo ""
@@ -322,6 +341,7 @@ cmd_delete() {
 
   rm -rf "$(profile_dir "$name")"
   git_auto_commit "Delete profile '$name'"
+  git_auto_push
 
   ok "Deleted profile '$name'"
 }

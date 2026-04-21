@@ -9,6 +9,8 @@ CPS_DATA_DIR="${CPS_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/cps}"
 CPS_PROFILES_DIR="$CPS_DATA_DIR/profiles"
 CPS_ACTIVE_FILE="$CPS_DATA_DIR/active"
 CPS_CONF_FILE="$CPS_DATA_DIR/cps.conf"
+CPS_SYNC_LOCK="$CPS_DATA_DIR/.sync.lock"
+CPS_DEVICE_NAME="${CPS_DEVICE_NAME:-$(hostname -s 2>/dev/null || echo 'unknown')}"
 
 CLAUDE_DIR="$HOME/.claude"
 CLAUDE_JSON="$HOME/.claude.json"
@@ -47,12 +49,39 @@ die()   { err "$@"; exit 1; }
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-# Get the active profile name, or empty string
 get_active_profile() {
   if [[ -f "$CPS_ACTIVE_FILE" ]]; then
     cat "$CPS_ACTIVE_FILE"
   fi
 }
+
+# ── Config (key=value in cps.conf) ────────────────────────────────────────────
+
+conf_get() {
+  local key="$1" default="${2:-}"
+  if [[ -f "$CPS_CONF_FILE" ]]; then
+    local val
+    val="$(grep "^${key}=" "$CPS_CONF_FILE" 2>/dev/null | head -1 | cut -d'=' -f2-)"
+    [[ -n "$val" ]] && echo "$val" || echo "$default"
+  else
+    echo "$default"
+  fi
+}
+
+conf_set() {
+  local key="$1" val="$2"
+  mkdir -p "$(dirname "$CPS_CONF_FILE")"
+  if [[ -f "$CPS_CONF_FILE" ]] && grep -q "^${key}=" "$CPS_CONF_FILE" 2>/dev/null; then
+    sed -i "s|^${key}=.*|${key}=${val}|" "$CPS_CONF_FILE"
+  else
+    echo "${key}=${val}" >> "$CPS_CONF_FILE"
+  fi
+}
+
+sync_enabled() {
+  [[ "$(conf_get sync_enabled 0)" == "1" ]]
+}
+
 
 # Check if a profile exists
 profile_exists() {

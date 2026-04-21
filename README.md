@@ -59,7 +59,7 @@ cps use work
 | `cps current` | Print active profile name |
 | `cps delete <name>` | Delete profile (cannot delete active) |
 
-### Git Backup
+### Git Backup & Sync
 
 | Command | Description |
 |---------|-------------|
@@ -69,6 +69,9 @@ cps use work
 | `cps remote [url]` | Get/set git remote |
 | `cps push` | Push to remote |
 | `cps pull` | Pull from remote |
+| `cps sync enable <url>` | Enable auto-sync to remote |
+| `cps sync disable` | Disable auto-sync |
+| `cps sync status` | Show sync state |
 
 ### Utility
 
@@ -124,6 +127,34 @@ source /path/to/cps/completions/cps.bash
 
 # Zsh (add to fpath before compinit)
 fpath=(/path/to/cps/completions $fpath)
+```
+
+## Cross-Device Sync
+
+Enable auto-sync to keep profiles in sync across machines:
+
+```sh
+# Create a private repo for your profiles
+gh repo create my-cps-profiles --private
+
+# Enable sync
+cps sync enable git@github.com:youruser/my-cps-profiles.git
+
+# Check status
+cps sync status
+```
+
+When sync is enabled:
+- Every profile mutation (create, use, delete, save) auto-pushes to remote
+- Every new shell auto-pulls from remote in the background (non-blocking)
+- Commit messages include hostname for multi-device visibility
+- Conflicts use local-wins strategy (force-with-lease push)
+
+On a new machine:
+```sh
+cps init
+cps sync enable git@github.com:youruser/my-cps-profiles.git
+cps pull
 ```
 
 ## Encryption

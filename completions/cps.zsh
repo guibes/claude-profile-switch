@@ -24,6 +24,7 @@ _cps() {
     'remote:Get/set git remote'
     'push:Push to remote'
     'pull:Pull from remote'
+    'sync:Auto-sync management (enable/disable/status)'
     'diff:Compare profiles'
     'edit:Open profile in editor'
     'doctor:Health check'
@@ -62,6 +63,11 @@ _cps() {
           ;;
         save)
           _message 'commit message'
+          ;;
+        sync)
+          local -a sync_cmds
+          sync_cmds=('enable:Enable auto-sync' 'disable:Disable auto-sync' 'status:Show sync state')
+          _describe 'sync command' sync_cmds
           ;;
       esac
       ;;
