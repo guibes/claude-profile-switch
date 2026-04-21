@@ -29,6 +29,10 @@ _cps() {
     'export:Export profile as archive'
     'import:Import profile from archive'
     'clone:Clone profiles from remote'
+    'link:Symlink item from another profile'
+    'unlink:Remove symlink and restore original'
+    'lock:Prevent modifications to a profile'
+    'unlock:Remove lock from a profile'
     'status:Show diff between profile and live state'
     'snapshot:Save live config back to profile'
     'desktop:Manage Claude Desktop config'
@@ -51,7 +55,7 @@ _cps() {
       ;;
     args)
       case $words[1] in
-        use|delete|rm|edit|log|diff|export|rename)
+        use|delete|rm|edit|log|diff|export|rename|lock|unlock)
           _cps_profiles
           ;;
         create)
@@ -86,6 +90,16 @@ _cps() {
           ;;
         snapshot)
           _arguments '--desktop[Include Claude Desktop config]'
+          ;;
+        link)
+          local -a items
+          items=('skills' 'commands' 'agents' 'hooks' 'settings.json' 'config.json' 'CLAUDE.md')
+          _arguments '1:item:($items)' '2:source profile:_cps_profiles'
+          ;;
+        unlink)
+          local -a items
+          items=('skills' 'commands' 'agents' 'hooks' 'settings.json' 'config.json' 'CLAUDE.md')
+          _arguments '1:item:($items)'
           ;;
       esac
       ;;

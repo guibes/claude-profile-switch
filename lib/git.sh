@@ -52,6 +52,73 @@ git_auto_push() {
   git -C "$CPS_DATA_DIR" push -q origin "$branch" 2>/dev/null || true
 }
 
+# Key-level JSON merge: local keys win on conflict, remote-only keys added
+json_key_merge() {
+  local base="$1" local_f="$2" remote_f="$3" output="$4"
+
+  python3 -c "
+import json, sys
+
+def load(p):
+    try:
+        with open(p) as f: return json.load(f)
+    except: return {}
+
+base, local, remote = load('$base'), load('$local_f'), load('$remote_f')
+merged = dict(local)
+
+for k, v in remote.items():
+    if k not in local:
+        merged[k] = v
+    elif k not in base and k in local and k in remote and local[k] != remote[k]:
+        merged[k] = local[k]
+
+with open('$output', 'w') as f:
+    json.dump(merged, f, indent=2)
+" 2>/dev/null
+}
+
+git_smart_merge() {
+  local branch="$1"
+  local merge_base
+  merge_base="$(git -C "$CPS_DATA_DIR" merge-base HEAD "origin/$branch" 2>/dev/null || echo "")"
+
+  if [[ -n "$merge_base" ]] && command -v python3 &>/dev/null; then
+    local json_files
+    json_files="$(git -C "$CPS_DATA_DIR" diff --name-only "origin/$branch" -- '*.json' 2>/dev/null || true)"
+
+    if [[ -n "$json_files" ]]; then
+      local tmpdir
+      tmpdir="$(mktemp -d)"
+
+      while IFS= read -r jf; do
+        local base_ver="$tmpdir/base.json"
+        local remote_ver="$tmpdir/remote.json"
+        local local_ver="$CPS_DATA_DIR/$jf"
+
+        git -C "$CPS_DATA_DIR" show "$merge_base:$jf" > "$base_ver" 2>/dev/null || echo '{}' > "$base_ver"
+        git -C "$CPS_DATA_DIR" show "origin/$branch:$jf" > "$remote_ver" 2>/dev/null || continue
+
+        if [[ -f "$local_ver" ]]; then
+          json_key_merge "$base_ver" "$local_ver" "$remote_ver" "$local_ver"
+        fi
+      done <<< "$json_files"
+
+      rm -rf "$tmpdir"
+
+      git -C "$CPS_DATA_DIR" add -A 2>/dev/null || true
+      if ! git -C "$CPS_DATA_DIR" diff --cached --quiet 2>/dev/null; then
+        git -C "$CPS_DATA_DIR" commit -q -m "Merge remote JSON changes [$CPS_DEVICE_NAME]" 2>/dev/null || true
+      fi
+    fi
+  fi
+
+  git -C "$CPS_DATA_DIR" rebase -q "origin/$branch" 2>/dev/null || {
+    git -C "$CPS_DATA_DIR" rebase --abort 2>/dev/null || true
+    git -C "$CPS_DATA_DIR" push -q --force-with-lease origin "$branch" 2>/dev/null || true
+  }
+}
+
 # Non-blocking background pull — safe for shell startup
 git_bg_pull() {
   if ! sync_enabled || ! has_remote; then
@@ -80,10 +147,7 @@ git_bg_pull() {
     remote_head="$(git -C "$CPS_DATA_DIR" rev-parse "origin/$branch" 2>/dev/null || echo "$local_head")"
 
     if [[ "$local_head" != "$remote_head" ]]; then
-      git -C "$CPS_DATA_DIR" rebase -q "origin/$branch" 2>/dev/null || {
-        git -C "$CPS_DATA_DIR" rebase --abort 2>/dev/null || true
-        git -C "$CPS_DATA_DIR" push -q --force-with-lease origin "$branch" 2>/dev/null || true
-      }
+      git_smart_merge "$branch"
 
       local active
       active=""

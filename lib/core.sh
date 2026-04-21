@@ -371,6 +371,7 @@ cmd_delete() {
 
   validate_profile_name "$name"
   profile_exists "$name" || die "Profile '$name' not found."
+  is_profile_locked "$name" && die "Profile '$name' is locked. Run 'cps unlock $name' first."
 
   local active
   active="$(get_active_profile)"
@@ -571,6 +572,149 @@ cmd_desktop() {
       die "Usage: cps desktop [save|restore|status]"
       ;;
   esac
+}
+
+cmd_link() {
+  require_init
+  local item="${1:-}"
+  local source_profile="${2:-}"
+
+  if [[ -z "$item" ]] || [[ -z "$source_profile" ]]; then
+    die "Usage: cps link <item> <source-profile>
+Items: skills, commands, agents, hooks, settings.json, config.json, CLAUDE.md"
+  fi
+
+  validate_profile_name "$source_profile"
+  profile_exists "$source_profile" || die "Source profile '$source_profile' not found."
+
+  local active
+  active="$(get_active_profile)"
+  if [[ -z "$active" ]]; then
+    die "No active profile."
+  fi
+
+  if [[ "$active" == "$source_profile" ]]; then
+    die "Cannot link from active profile to itself."
+  fi
+
+  local src
+  src="$(profile_claude_dir "$source_profile")/$item"
+  local dst
+  dst="$(profile_claude_dir "$active")/$item"
+
+  if [[ ! -e "$src" ]]; then
+    die "Item '$item' not found in profile '$source_profile'."
+  fi
+
+  if [[ -L "$dst" ]]; then
+    rm -f "$dst"
+  elif [[ -e "$dst" ]]; then
+    local backup="${dst}.bak"
+    mv "$dst" "$backup"
+    info "Backed up existing $item to ${item}.bak"
+  fi
+
+  ln -sf "$src" "$dst"
+  git_auto_commit "Link $item from '$source_profile' to '$active'"
+  git_auto_push
+
+  ok "Linked $item: $active → $source_profile"
+}
+
+cmd_unlink() {
+  require_init
+  local item="${1:-}"
+
+  if [[ -z "$item" ]]; then
+    die "Usage: cps unlink <item>"
+  fi
+
+  local active
+  active="$(get_active_profile)"
+  if [[ -z "$active" ]]; then
+    die "No active profile."
+  fi
+
+  local dst
+  dst="$(profile_claude_dir "$active")/$item"
+
+  if [[ ! -L "$dst" ]]; then
+    die "'$item' is not a symlink in profile '$active'."
+  fi
+
+  rm -f "$dst"
+
+  local backup="${dst}.bak"
+  if [[ -e "$backup" ]]; then
+    mv "$backup" "$dst"
+    info "Restored original $item from backup"
+  elif [[ -d "$(profile_claude_dir "$active")" ]]; then
+    case "$item" in
+      skills|commands|agents|hooks) mkdir -p "$dst" ;;
+    esac
+  fi
+
+  git_auto_commit "Unlink $item in '$active'"
+  git_auto_push
+
+  ok "Unlinked $item in '$active'"
+}
+
+cmd_lock() {
+  require_init
+  local name="${1:-}"
+
+  if [[ -z "$name" ]]; then
+    die "Usage: cps lock <name>"
+  fi
+
+  validate_profile_name "$name"
+  profile_exists "$name" || die "Profile '$name' not found."
+
+  local lockfile
+  lockfile="$(profile_dir "$name")/.locked"
+
+  if [[ -f "$lockfile" ]]; then
+    info "Profile '$name' is already locked."
+    return
+  fi
+
+  touch "$lockfile"
+  git_auto_commit "Lock profile '$name'"
+  git_auto_push
+
+  ok "Locked profile '$name'"
+}
+
+cmd_unlock() {
+  require_init
+  local name="${1:-}"
+
+  if [[ -z "$name" ]]; then
+    die "Usage: cps unlock <name>"
+  fi
+
+  validate_profile_name "$name"
+  profile_exists "$name" || die "Profile '$name' not found."
+
+  local lockfile
+  lockfile="$(profile_dir "$name")/.locked"
+
+  if [[ ! -f "$lockfile" ]]; then
+    info "Profile '$name' is not locked."
+    return
+  fi
+
+  rm -f "$lockfile"
+  git_auto_commit "Unlock profile '$name'"
+  git_auto_push
+
+  ok "Unlocked profile '$name'"
+}
+
+is_profile_locked() {
+  local name="$1"
+  [[ -f "$(profile_dir "$name")/.locked" ]]
 }
 
 cmd_export() {

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CPS_VERSION="0.4.0"
+CPS_VERSION="0.5.0"
 
 CPS_ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 
@@ -31,6 +31,10 @@ ${BOLD}PROFILE COMMANDS${RESET}
   clone <url>             Clone profiles from remote (first-time setup)
   status                  Show diff between profile and live state
   snapshot [--desktop]    Save live config back to profile
+  link <item> <profile>   Symlink item from another profile (shared layer)
+  unlink <item>           Remove symlink, restore original
+  lock <name>             Prevent modifications to a profile
+  unlock <name>           Remove lock from a profile
 
 ${BOLD}GIT BACKUP & SYNC${RESET}
   save [message]          Commit current state with message
@@ -154,6 +158,10 @@ main() {
     import)      cmd_import "${1:-}" "${2:-}" ;;
     rename|mv)   cmd_rename "${1:-}" "${2:-}" ;;
     clone)       cmd_clone "${1:-}" ;;
+    link)        cmd_link "${1:-}" "${2:-}" ;;
+    unlink)      cmd_unlink "${1:-}" ;;
+    lock)        cmd_lock "${1:-}" ;;
+    unlock)      cmd_unlock "${1:-}" ;;
     status)      cmd_status ;;
     snapshot)    shift 2>/dev/null || true; cmd_snapshot "$@" ;;
     desktop)     cmd_desktop "${1:-}" ;;
