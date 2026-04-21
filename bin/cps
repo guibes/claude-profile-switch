@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CPS_VERSION="0.5.0"
+CPS_VERSION="0.6.0"
 
 CPS_ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 
@@ -22,7 +22,8 @@ ${BOLD}PROFILE COMMANDS${RESET}
   init                    Initialize CPS, snapshot current config as 'default'
   create <name> [flags]   Create profile (--from <p> | --fresh | --template <url>)
   use <name>              Switch to profile
-  list                    List all profiles
+  pick                    Interactive profile picker (default with no args)
+  list [--tag <t>]        List all profiles (filter by tag)
   current                 Print active profile name
   delete <name>           Delete a profile
   rename <old> <new>      Rename a profile
@@ -35,6 +36,10 @@ ${BOLD}PROFILE COMMANDS${RESET}
   unlink <item>           Remove symlink, restore original
   lock <name>             Prevent modifications to a profile
   unlock <name>           Remove lock from a profile
+  tag <profile> <tag>     Add tag to profile
+  untag <profile> <tag>   Remove tag from profile
+  tags                    List all tags with counts
+  audit [filters]         Query audit log (--action, --profile, --since, --limit)
 
 ${BOLD}GIT BACKUP & SYNC${RESET}
   save [message]          Commit current state with message
@@ -46,6 +51,8 @@ ${BOLD}GIT BACKUP & SYNC${RESET}
   sync enable <url>       Enable auto-sync to remote
   sync disable            Disable auto-sync
   sync status             Show sync state (default)
+  sync schedule [interval] Install periodic sync timer (default: 30m)
+  sync unschedule         Remove sync timer
 
 ${BOLD}CLAUDE DESKTOP${RESET}
   desktop save            Save Claude Desktop config to profile
@@ -143,15 +150,28 @@ parse_create_args() {
   cmd_create "$name" "$from" "$fresh" "$template"
 }
 
+parse_list_args() {
+  local tag=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --tag) shift; tag="${1:-}" ;;
+      *) die "Unknown option: $1" ;;
+    esac
+    shift
+  done
+  cmd_list "$tag"
+}
+
 main() {
-  local command="${1:-help}"
+  local command="${1:-pick}"
   shift 2>/dev/null || true
 
   case "$command" in
+    pick)        cmd_pick ;;
     init)        parse_init_args "$@" ;;
     create)      parse_create_args "$@" ;;
     use)         cmd_use "${1:-}" ;;
-    list|ls)     cmd_list ;;
+    list|ls)     parse_list_args "$@" ;;
     current)     cmd_current ;;
     delete|rm)   cmd_delete "${1:-}" ;;
     export)      cmd_export "${1:-}" "${2:-}" ;;
@@ -165,6 +185,10 @@ main() {
     status)      cmd_status ;;
     snapshot)    shift 2>/dev/null || true; cmd_snapshot "$@" ;;
     desktop)     cmd_desktop "${1:-}" ;;
+    tag)         cmd_tag "${1:-}" "${2:-}" ;;
+    untag)       cmd_untag "${1:-}" "${2:-}" ;;
+    tags)        cmd_tags ;;
+    audit)       cmd_audit "$@" ;;
     save)        cmd_save "${1:-}" ;;
     log)         cmd_log "${1:-}" ;;
     rollback)    cmd_rollback "${1:-}" ;;

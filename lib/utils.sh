@@ -83,6 +83,24 @@ sync_enabled() {
   [[ "$(conf_get sync_enabled 0)" == "1" ]]
 }
 
+CPS_AUDIT_LOG="$CPS_DATA_DIR/audit.log"
+
+audit_log() {
+  local action="$1"
+  local profile="${2:-}"
+  local extra="${3:-}"
+
+  local ts
+  ts="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+
+  local entry="{\"ts\":\"$ts\",\"device\":\"$CPS_DEVICE_NAME\",\"action\":\"$action\",\"profile\":\"$profile\""
+  if [[ -n "$extra" ]]; then
+    entry="$entry,\"detail\":\"$extra\""
+  fi
+  entry="$entry}"
+
+  echo "$entry" >> "$CPS_AUDIT_LOG" 2>/dev/null || true
+}
 
 # Check if a profile exists
 profile_exists() {

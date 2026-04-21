@@ -14,6 +14,7 @@ _cps() {
   commands=(
     'init:Initialize CPS and snapshot current config'
     'create:Create a new profile'
+    'pick:Interactive profile picker'
     'use:Switch to a profile'
     'list:List all profiles'
     'current:Print active profile name'
@@ -33,6 +34,10 @@ _cps() {
     'unlink:Remove symlink and restore original'
     'lock:Prevent modifications to a profile'
     'unlock:Remove lock from a profile'
+    'tag:Add tag to profile'
+    'untag:Remove tag from profile'
+    'tags:List all tags'
+    'audit:Query audit log'
     'status:Show diff between profile and live state'
     'snapshot:Save live config back to profile'
     'desktop:Manage Claude Desktop config'
@@ -80,7 +85,7 @@ _cps() {
           ;;
         sync)
           local -a sync_cmds
-          sync_cmds=('enable:Enable auto-sync' 'disable:Disable auto-sync' 'status:Show sync state')
+          sync_cmds=('enable:Enable auto-sync' 'disable:Disable auto-sync' 'status:Show sync state' 'schedule:Install periodic sync timer' 'unschedule:Remove sync timer')
           _describe 'sync command' sync_cmds
           ;;
         desktop)
@@ -100,6 +105,15 @@ _cps() {
           local -a items
           items=('skills' 'commands' 'agents' 'hooks' 'settings.json' 'config.json' 'CLAUDE.md')
           _arguments '1:item:($items)'
+          ;;
+        tag|untag)
+          _arguments '1:profile:_cps_profiles' '2:tag:'
+          ;;
+        list|ls)
+          _arguments '--tag[Filter by tag]:tag:'
+          ;;
+        audit)
+          _arguments '--action[Filter by action]:action:' '--profile[Filter by profile]:profile:_cps_profiles' '--since[Filter by time]:period:' '--limit[Max results]:count:'
           ;;
       esac
       ;;

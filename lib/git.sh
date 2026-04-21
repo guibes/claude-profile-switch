@@ -317,6 +317,7 @@ cmd_sync() {
 
     disable)
       conf_set sync_enabled 0
+      sync_unschedule_timer 2>/dev/null || true
       git_auto_commit "Disable sync from $CPS_DEVICE_NAME"
       ok "Sync disabled. Use 'cps push/pull' for manual sync."
       ;;
@@ -350,10 +351,159 @@ cmd_sync() {
       local last_commit
       last_commit="$(git -C "$CPS_DATA_DIR" log -1 --format='%ar by %an' 2>/dev/null || echo "never")"
       info "Last change: $last_commit"
+
+      local sched
+      sched="$(sync_schedule_status)"
+      if [[ "$sched" != "none" ]]; then
+        ok "Scheduled: $sched"
+      fi
+      ;;
+
+    schedule)
+      local interval="${2:-30m}"
+      sync_schedule_timer "$interval"
+      ;;
+
+    unschedule)
+      sync_unschedule_timer
       ;;
 
     *)
-      die "Usage: cps sync [enable <url>|disable|status]"
+      die "Usage: cps sync [enable <url>|disable|status|schedule [interval]|unschedule]"
       ;;
   esac
+}
+
+sync_schedule_status() {
+  if [[ "$(uname)" == "Darwin" ]]; then
+    if [[ -f "$HOME/Library/LaunchAgents/com.cps.sync.plist" ]]; then
+      local interval
+      interval="$(defaults read "$HOME/Library/LaunchAgents/com.cps.sync" StartInterval 2>/dev/null || echo "?")"
+      echo "every ${interval}s (launchd)"
+    else
+      echo "none"
+    fi
+  else
+    if systemctl --user is-active cps-sync.timer &>/dev/null; then
+      local interval
+      interval="$(systemctl --user show cps-sync.timer -p Description --value 2>/dev/null | grep -oP '\d+\w+' || echo "?")"
+      echo "every $interval (systemd)"
+    else
+      echo "none"
+    fi
+  fi
+}
+
+sync_schedule_timer() {
+  local interval="$1"
+
+  if [[ "$(uname)" == "Darwin" ]]; then
+    sync_schedule_launchd "$interval"
+  elif command -v systemctl &>/dev/null; then
+    sync_schedule_systemd "$interval"
+  else
+    die "No supported scheduler found (need systemd or launchd)."
+  fi
+}
+
+sync_unschedule_timer() {
+  if [[ "$(uname)" == "Darwin" ]]; then
+    local plist="$HOME/Library/LaunchAgents/com.cps.sync.plist"
+    if [[ -f "$plist" ]]; then
+      launchctl unload "$plist" 2>/dev/null || true
+      rm -f "$plist"
+      ok "Sync schedule removed (launchd)"
+    else
+      info "No sync schedule found."
+    fi
+  else
+    if systemctl --user is-enabled cps-sync.timer &>/dev/null; then
+      systemctl --user disable --now cps-sync.timer 2>/dev/null || true
+      rm -f "$HOME/.config/systemd/user/cps-sync.service" "$HOME/.config/systemd/user/cps-sync.timer"
+      systemctl --user daemon-reload 2>/dev/null || true
+      ok "Sync schedule removed (systemd)"
+    else
+      info "No sync schedule found."
+    fi
+  fi
+}
+
+sync_schedule_systemd() {
+  local interval="$1"
+  local unit_dir="$HOME/.config/systemd/user"
+  mkdir -p "$unit_dir"
+
+  local cps_bin
+  cps_bin="$(command -v cps 2>/dev/null || echo "$CPS_ROOT/bin/cps")"
+
+  cat > "$unit_dir/cps-sync.service" << EOF
+[Unit]
+Description=CPS profile sync
+
+[Service]
+Type=oneshot
+ExecStart=$cps_bin save "Scheduled sync" 
+ExecStart=$cps_bin push
+ExecStart=$cps_bin pull
+EOF
+
+  cat > "$unit_dir/cps-sync.timer" << EOF
+[Unit]
+Description=CPS sync every $interval
+
+[Timer]
+OnUnitActiveSec=$interval
+OnBootSec=5m
+
+[Install]
+WantedBy=timers.target
+EOF
+
+  systemctl --user daemon-reload
+  systemctl --user enable --now cps-sync.timer
+
+  ok "Sync scheduled every $interval (systemd)"
+}
+
+sync_schedule_launchd() {
+  local interval="$1"
+  local plist="$HOME/Library/LaunchAgents/com.cps.sync.plist"
+  mkdir -p "$(dirname "$plist")"
+
+  local seconds
+  case "$interval" in
+    *m) seconds=$(( ${interval%m} * 60 )) ;;
+    *h) seconds=$(( ${interval%h} * 3600 )) ;;
+    *s) seconds=${interval%s} ;;
+    *)  seconds=$(( interval * 60 )) ;;
+  esac
+
+  local cps_bin
+  cps_bin="$(command -v cps 2>/dev/null || echo "$CPS_ROOT/bin/cps")"
+
+  cat > "$plist" << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.cps.sync</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-c</string>
+    <string>$cps_bin save "Scheduled sync" &amp;&amp; $cps_bin push &amp;&amp; $cps_bin pull</string>
+  </array>
+  <key>StartInterval</key>
+  <integer>$seconds</integer>
+  <key>RunAtLoad</key>
+  <true/>
+</dict>
+</plist>
+EOF
+
+  launchctl unload "$plist" 2>/dev/null || true
+  launchctl load "$plist"
+
+  ok "Sync scheduled every $interval (launchd)"
 }

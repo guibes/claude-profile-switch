@@ -38,6 +38,7 @@ cmd_init() {
 
   git_auto_commit "Create '$default_profile' profile from current config"
 
+  audit_log "init" "$default_profile"
   ok "Initialized CPS at $CPS_DATA_DIR"
   ok "Created profile '$default_profile' from current config"
   echo ""
@@ -103,6 +104,7 @@ cmd_create() {
 
   git_auto_commit "Create profile '$name'"
   git_auto_push
+  audit_log "create" "$name"
   ok "Created profile '$name'"
 }
 
@@ -146,6 +148,7 @@ cmd_use() {
   git_auto_commit "Switch to profile '$name'"
   git_auto_push
   run_profile_hooks "post-switch" "$name"
+  audit_log "use" "$name" "from:$active"
 
   ok "Switched to profile '$name'"
 
@@ -159,8 +162,69 @@ cmd_use() {
   fi
 }
 
+cmd_pick() {
+  require_init
+
+  local profiles
+  profiles="$(list_profiles)"
+
+  if [[ -z "$profiles" ]]; then
+    die "No profiles found."
+  fi
+
+  local count
+  count="$(echo "$profiles" | wc -l)"
+  if [[ "$count" -eq 1 ]]; then
+    info "Only one profile: $profiles"
+    return
+  fi
+
+  local active
+  active="$(get_active_profile)"
+
+  local display_lines=()
+  local profile_names=()
+  while IFS= read -r name; do
+    local label="$name"
+    [[ "$name" == "$active" ]] && label="$name *"
+    is_profile_locked "$name" && label="$label [locked]"
+    display_lines+=("$label")
+    profile_names+=("$name")
+  done <<< "$profiles"
+
+  local selected=""
+
+  if command -v fzf &>/dev/null; then
+    selected="$(printf '%s\n' "${display_lines[@]}" \
+      | fzf --height=~40% --reverse --prompt="Profile > " --no-info \
+      | sed 's/ \*$//' | sed 's/ \[locked\]$//')"
+  else
+    PS3="$(printf "${BLUE}▸${RESET} Select profile: ")"
+    select choice in "${display_lines[@]}"; do
+      if [[ -n "$choice" ]]; then
+        selected="$(echo "$choice" | sed 's/ \*$//' | sed 's/ \[locked\]$//')"
+        break
+      fi
+    done
+  fi
+
+  if [[ -z "$selected" ]]; then
+    return
+  fi
+
+  selected="$(echo "$selected" | xargs)"
+
+  if [[ "$selected" == "$active" ]]; then
+    info "Already on '$selected'"
+    return
+  fi
+
+  cmd_use "$selected"
+}
+
 cmd_list() {
   require_init
+  local filter_tag="${1:-}"
 
   local active
   active="$(get_active_profile)"
@@ -173,6 +237,10 @@ cmd_list() {
   fi
 
   while IFS= read -r name; do
+    if [[ -n "$filter_tag" ]]; then
+      profile_has_tag "$name" "$filter_tag" || continue
+    fi
+
     local claude_dir
     claude_dir="$(profile_claude_dir "$name")"
     local mod_date="-"
@@ -180,12 +248,122 @@ cmd_list() {
       mod_date="$(date -r "$claude_dir" '+%Y-%m-%d %H:%M' 2>/dev/null || echo "-")"
     fi
 
+    local tags_str=""
+    local tagfile
+    tagfile="$(profile_dir "$name")/.cps-tags"
+    if [[ -f "$tagfile" ]]; then
+      tags_str=" $(grep -v '^$' "$tagfile" 2>/dev/null | tr '\n' ',' | sed 's/,$//')"
+    fi
+
     if [[ "$name" == "$active" ]]; then
-      printf "  ${GREEN}* %-20s${RESET} ${DIM}%s${RESET}\n" "$name" "$mod_date"
+      printf "  ${GREEN}* %-20s${RESET} ${DIM}%s${RESET}${CYAN}%s${RESET}\n" "$name" "$mod_date" "$tags_str"
     else
-      printf "    %-20s ${DIM}%s${RESET}\n" "$name" "$mod_date"
+      printf "    %-20s ${DIM}%s${RESET}${CYAN}%s${RESET}\n" "$name" "$mod_date" "$tags_str"
     fi
   done <<< "$profiles"
+}
+
+profile_has_tag() {
+  local name="$1" tag="$2"
+  local tagfile
+  tagfile="$(profile_dir "$name")/.cps-tags"
+  [[ -f "$tagfile" ]] && grep -qx "$tag" "$tagfile" 2>/dev/null
+}
+
+cmd_tag() {
+  require_init
+  local name="${1:-}"
+  local tag="${2:-}"
+
+  if [[ -z "$name" ]] || [[ -z "$tag" ]]; then
+    die "Usage: cps tag <profile> <tag>"
+  fi
+
+  validate_profile_name "$name"
+  validate_profile_name "$tag"
+  profile_exists "$name" || die "Profile '$name' not found."
+
+  local tagfile
+  tagfile="$(profile_dir "$name")/.cps-tags"
+
+  if [[ -f "$tagfile" ]] && grep -qx "$tag" "$tagfile" 2>/dev/null; then
+    info "Profile '$name' already has tag '$tag'"
+    return
+  fi
+
+  echo "$tag" >> "$tagfile"
+  git_auto_commit "Tag '$name' with '$tag'"
+  git_auto_push
+
+  ok "Tagged '$name' with '$tag'"
+}
+
+cmd_untag() {
+  require_init
+  local name="${1:-}"
+  local tag="${2:-}"
+
+  if [[ -z "$name" ]] || [[ -z "$tag" ]]; then
+    die "Usage: cps untag <profile> <tag>"
+  fi
+
+  validate_profile_name "$name"
+  profile_exists "$name" || die "Profile '$name' not found."
+
+  local tagfile
+  tagfile="$(profile_dir "$name")/.cps-tags"
+
+  if [[ ! -f "$tagfile" ]] || ! grep -qx "$tag" "$tagfile" 2>/dev/null; then
+    info "Profile '$name' doesn't have tag '$tag'"
+    return
+  fi
+
+  grep -vx "$tag" "$tagfile" > "${tagfile}.tmp" && mv "${tagfile}.tmp" "$tagfile"
+
+  if [[ ! -s "$tagfile" ]]; then
+    rm -f "$tagfile"
+  fi
+
+  git_auto_commit "Untag '$tag' from '$name'"
+  git_auto_push
+
+  ok "Removed tag '$tag' from '$name'"
+}
+
+cmd_tags() {
+  require_init
+
+  local -A tag_counts
+  local profiles
+  profiles="$(list_profiles)"
+
+  if [[ -z "$profiles" ]]; then
+    info "No profiles."
+    return
+  fi
+
+  while IFS= read -r name; do
+    local tagfile
+    tagfile="$(profile_dir "$name")/.cps-tags"
+    if [[ -f "$tagfile" ]]; then
+      while IFS= read -r t; do
+        [[ -z "$t" ]] && continue
+        tag_counts[$t]=$(( ${tag_counts[$t]:-0} + 1 ))
+      done < "$tagfile"
+    fi
+  done <<< "$profiles"
+
+  if [[ ${#tag_counts[@]} -eq 0 ]]; then
+    info "No tags found."
+    return
+  fi
+
+  for t in $(echo "${!tag_counts[@]}" | tr ' ' '\n' | sort); do
+    local c=${tag_counts[$t]}
+    local label="profile"
+    [[ $c -gt 1 ]] && label="profiles"
+    printf "  ${CYAN}%-20s${RESET} %d %s\n" "$t" "$c" "$label"
+  done
 }
 
 cmd_current() {
@@ -383,6 +561,7 @@ cmd_delete() {
   rm -rf "$(profile_dir "$name")"
   git_auto_commit "Delete profile '$name'"
   git_auto_push
+  audit_log "delete" "$name"
 
   ok "Deleted profile '$name'"
 }
@@ -510,6 +689,7 @@ cmd_snapshot() {
   git_auto_commit "Snapshot profile '$active'"
   git_auto_push
 
+  audit_log "snapshot" "$active"
   ok "Snapshot saved for '$active'"
 }
 
@@ -617,6 +797,7 @@ Items: skills, commands, agents, hooks, settings.json, config.json, CLAUDE.md"
   ln -sf "$src" "$dst"
   git_auto_commit "Link $item from '$source_profile' to '$active'"
   git_auto_push
+  audit_log "link" "$active" "$item:$source_profile"
 
   ok "Linked $item: $active → $source_profile"
 }
@@ -656,6 +837,7 @@ cmd_unlink() {
 
   git_auto_commit "Unlink $item in '$active'"
   git_auto_push
+  audit_log "unlink" "$active" "$item"
 
   ok "Unlinked $item in '$active'"
 }
@@ -682,6 +864,7 @@ cmd_lock() {
   touch "$lockfile"
   git_auto_commit "Lock profile '$name'"
   git_auto_push
+  audit_log "lock" "$name"
 
   ok "Locked profile '$name'"
 }
@@ -708,6 +891,7 @@ cmd_unlock() {
   rm -f "$lockfile"
   git_auto_commit "Unlock profile '$name'"
   git_auto_push
+  audit_log "unlock" "$name"
 
   ok "Unlocked profile '$name'"
 }
@@ -814,6 +998,7 @@ cmd_rename() {
 
   git_auto_commit "Rename profile '$old' to '$new'"
   git_auto_push
+  audit_log "rename" "$new" "from:$old"
 
   ok "Renamed '$old' to '$new'"
 }
@@ -907,4 +1092,86 @@ cmd_upgrade() {
 
   ok "Upgraded to $latest"
   info "Run 'cps version' to confirm."
+}
+
+cmd_audit() {
+  require_init
+
+  local filter_action="" filter_profile="" filter_since="" limit=50
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --action)  filter_action="${2:-}"; shift 2 ;;
+      --profile) filter_profile="${2:-}"; shift 2 ;;
+      --since)   filter_since="${2:-}"; shift 2 ;;
+      --limit)   limit="${2:-50}"; shift 2 ;;
+      *) die "Unknown option: $1. Usage: cps audit [--action <type>] [--profile <name>] [--since <period>] [--limit N]" ;;
+    esac
+  done
+
+  if [[ ! -f "$CPS_AUDIT_LOG" ]]; then
+    info "No audit log yet."
+    return
+  fi
+
+  local since_ts=""
+  if [[ -n "$filter_since" ]]; then
+    local now
+    now="$(date +%s)"
+    local delta=0
+    case "$filter_since" in
+      *d) delta=$(( ${filter_since%d} * 86400 )) ;;
+      *h) delta=$(( ${filter_since%h} * 3600 )) ;;
+      *m) delta=$(( ${filter_since%m} * 60 )) ;;
+      *)  since_ts="$filter_since" ;;
+    esac
+    if [[ -z "$since_ts" ]]; then
+      since_ts="$(date -u -d "@$(( now - delta ))" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null \
+        || date -u -r "$(( now - delta ))" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null \
+        || echo "")"
+    fi
+  fi
+
+  local count=0
+  local lines
+  lines="$(tac "$CPS_AUDIT_LOG" 2>/dev/null || tail -r "$CPS_AUDIT_LOG" 2>/dev/null || cat "$CPS_AUDIT_LOG")"
+
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    [[ $count -ge $limit ]] && break
+
+    if [[ -n "$filter_action" ]]; then
+      echo "$line" | grep -q "\"action\":\"$filter_action\"" || continue
+    fi
+
+    if [[ -n "$filter_profile" ]]; then
+      echo "$line" | grep -q "\"profile\":\"$filter_profile\"" || continue
+    fi
+
+    if [[ -n "$since_ts" ]]; then
+      local entry_ts
+      entry_ts="$(echo "$line" | grep -oP '"ts":"[^"]+' | sed 's/"ts":"//')"
+      [[ -n "$entry_ts" ]] && [[ "$entry_ts" < "$since_ts" ]] && continue
+    fi
+
+    local ts action profile device detail
+    ts="$(echo "$line" | grep -oP '"ts":"[^"]+' | sed 's/"ts":"//')"
+    action="$(echo "$line" | grep -oP '"action":"[^"]+' | sed 's/"action":"//')"
+    profile="$(echo "$line" | grep -oP '"profile":"[^"]+' | sed 's/"profile":"//')"
+    device="$(echo "$line" | grep -oP '"device":"[^"]+' | sed 's/"device":"//')"
+    detail="$(echo "$line" | grep -oP '"detail":"[^"]+' | sed 's/"detail":"//' || true)"
+
+    local display_ts="${ts/T/ }"
+    display_ts="${display_ts%Z}"
+
+    printf "${DIM}%s${RESET}  ${BOLD}%-10s${RESET}  %-20s  ${DIM}%s${RESET}" "$display_ts" "$action" "$profile" "$device"
+    [[ -n "$detail" ]] && printf "  ${CYAN}%s${RESET}" "$detail"
+    printf "\n"
+
+    count=$((count + 1))
+  done <<< "$lines"
+
+  if [[ $count -eq 0 ]]; then
+    info "No matching entries."
+  fi
 }
