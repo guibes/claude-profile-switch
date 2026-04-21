@@ -731,3 +731,36 @@ run_profile_hooks() {
     CPS_PROFILE="$profile_name" CPS_HOOK="$hook_name" "$hook_file" || warn "Hook $hook_name exited with error"
   fi
 }
+
+cmd_upgrade() {
+  if [[ ! -d "$CPS_ROOT/.git" ]]; then
+    die "CPS was not installed via git clone. Cannot auto-upgrade."
+  fi
+
+  info "Checking for updates..."
+
+  local current="$CPS_VERSION"
+  local latest
+  latest="$(git -C "$CPS_ROOT" ls-remote --tags origin 2>/dev/null \
+    | grep -o 'refs/tags/v[0-9]*\.[0-9]*\.[0-9]*$' \
+    | sed 's|refs/tags/||' \
+    | sort -V \
+    | tail -1 || true)"
+
+  if [[ -z "$latest" ]]; then
+    die "Cannot fetch latest version. Check network and remote."
+  fi
+
+  if [[ "v$current" == "$latest" ]]; then
+    ok "Already on latest version ($current)"
+    return
+  fi
+
+  info "Upgrading: v$current → $latest"
+
+  git -C "$CPS_ROOT" fetch -q --tags origin || die "Fetch failed."
+  git -C "$CPS_ROOT" checkout -q "$latest" || die "Checkout failed."
+
+  ok "Upgraded to $latest"
+  info "Run 'cps version' to confirm."
+}

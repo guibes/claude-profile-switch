@@ -130,6 +130,7 @@ _cps() {
     'diff:Compare profiles'
     'edit:Open profile in editor'
     'doctor:Health check'
+    'upgrade:Self-update to latest version'
     'shell-init:Output shell integration code'
     'help:Show help'
     'version:Show version'

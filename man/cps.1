@@ -1,0 +1,146 @@
+.TH CPS 1 "April 2026" "cps 0.4.0" "User Commands"
+.SH NAME
+cps \- Claude Profile Switch
+.SH SYNOPSIS
+.B cps
+.I command
+.RI [ args ]
+.SH DESCRIPTION
+Switch between isolated Claude Code profiles.
+Each profile contains its own credentials, settings, skills, commands, agents, and MCP config.
+Profiles are git-backed with optional age encryption and cross-device sync.
+.SH COMMANDS
+.SS "Profile Management"
+.TP
+.B init
+Initialize CPS, snapshot current config as 'default' profile.
+.TP
+.B init \-\-key \fIpath\fR
+Import an age key on a new machine.
+.TP
+.B create \fIname\fR [\-\-from \fIprofile\fR | \-\-fresh | \-\-template \fIurl\fR]
+Create a new profile. Defaults to copying the active profile.
+.TP
+.B use \fIname\fR
+Switch to the named profile. Updates CLAUDE_CONFIG_DIR, swaps ~/.claude.json, symlinks ~/.claude/, and restores Claude Desktop config.
+.TP
+.B list
+List all profiles. Active profile marked with *.
+.TP
+.B current
+Print the active profile name.
+.TP
+.B delete \fIname\fR
+Delete a profile. Cannot delete the active profile.
+.TP
+.B rename \fIold\fR \fInew\fR
+Rename a profile.
+.TP
+.B export \fIname\fR [\fIpath\fR]
+Export a profile as a .tar.gz archive.
+.TP
+.B import \fIarchive\fR [\fIname\fR]
+Import a profile from an archive.
+.TP
+.B clone \fIurl\fR
+Clone profiles from a remote git repository.
+.TP
+.B status
+Show differences between the active profile and live config.
+.TP
+.B snapshot [\-\-desktop]
+Save live config back to the active profile.
+.SS "Git Backup & Sync"
+.TP
+.B save \fR[\fImessage\fR]
+Commit current profile state.
+.TP
+.B log \fR[\fIprofile\fR]
+Show change history.
+.TP
+.B rollback \fIcommit\fR
+Restore to a previous commit.
+.TP
+.B remote \fR[\fIurl\fR]
+Get or set git remote.
+.TP
+.B push
+Push to remote.
+.TP
+.B pull
+Pull from remote.
+.TP
+.B sync enable \fIurl\fR
+Enable auto-sync to remote.
+.TP
+.B sync disable
+Disable auto-sync.
+.TP
+.B sync status
+Show sync state.
+.SS "Claude Desktop"
+.TP
+.B desktop save
+Save Claude Desktop config to profile.
+.TP
+.B desktop restore
+Restore Claude Desktop config from profile.
+.TP
+.B desktop status
+Check if desktop config is synced.
+.SS "Utility"
+.TP
+.B diff \fR[\fIp1\fR] [\fIp2\fR]
+Compare two profiles.
+.TP
+.B edit \fR[\fIname\fR]
+Open profile directory in $EDITOR.
+.TP
+.B doctor
+Run health checks.
+.TP
+.B upgrade
+Self-update to latest version.
+.TP
+.B shell\-init
+Output shell integration code for eval.
+.SH ENVIRONMENT
+.TP
+.B CLAUDE_CONFIG_DIR
+Set by cps to point Claude Code at the active profile's config directory.
+.TP
+.B CPS_DATA_DIR
+Override profile storage location (default: ~/.local/share/cps).
+.TP
+.B CPS_DEVICE_NAME
+Override device hostname in commit messages.
+.SH FILES
+.TP
+.I ~/.local/share/cps/
+Profile storage (git repository).
+.TP
+.I ~/.local/share/cps/profiles/*/claude/
+Per-profile Claude Code config directories.
+.TP
+.I ~/.local/share/cps/active
+Current active profile name.
+.TP
+.I ~/.local/share/cps/cps.conf
+CPS configuration (sync settings).
+.TP
+.I ~/.local/share/cps/age-key.txt
+Age encryption private key (gitignored).
+.SH SHELL INTEGRATION
+Add to ~/.zshrc or ~/.bashrc:
+.PP
+.RS
+eval "$(cps shell\-init)"
+.RE
+.PP
+For Oh My Zsh, add 'cps' to plugins in ~/.zshrc.
+.SH AUTHORS
+Geovane Guibes <https://github.com/guibes>
+.SH SEE ALSO
+.BR claude (1),
+.BR age (1),
+.BR git (1)

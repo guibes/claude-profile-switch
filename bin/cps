@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CPS_VERSION="0.3.0"
+CPS_VERSION="0.4.0"
 
 CPS_ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 
@@ -52,6 +52,7 @@ ${BOLD}UTILITY${RESET}
   diff [p1] [p2]          Compare two profiles (default: active vs all)
   edit [name]             Open profile dir in \$EDITOR
   doctor                  Health check (paths, encryption, git, integrity)
+  upgrade                 Self-update to latest version
   shell-init              Output shell integration code
   help                    Show this help
 
@@ -166,6 +167,7 @@ main() {
     diff)        cmd_diff "${1:-}" "${2:-}" ;;
     edit)        cmd_edit "${1:-}" ;;
     doctor)      cmd_doctor ;;
+    upgrade)     cmd_upgrade ;;
     shell-init)  cmd_shell_init ;;
     help|--help|-h) show_help ;;
     version|--version|-v) echo "cps $CPS_VERSION" ;;
